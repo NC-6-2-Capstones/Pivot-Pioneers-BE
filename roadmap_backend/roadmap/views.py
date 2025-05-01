@@ -36,10 +36,12 @@ def login_view(request):
         form = AuthenticationForm()
     return render(request, 'registration/login.html', {'form': form})
 
+
 @login_required
 def logout_view(request):
     logout(request)
     return redirect('login')
+
 
 def register_view(request):
     if request.method == 'POST':
@@ -140,6 +142,7 @@ class ResourceViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+
 class AssessmentQuestionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AssessmentQuestion.objects.all()
     serializer_class = AssessmentQuestionSerializer
@@ -150,6 +153,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -166,6 +170,7 @@ def login_token(request):
     
     return Response({'detail': 'Invalid credentials'}, status=400)
 
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_token(request):
@@ -181,6 +186,7 @@ def register_token(request):
         return Response({'token': token.key, 'user': UserSerializer(user).data})
     
     return Response(serializer.errors, status=400)
+
 
 @api_view(['GET'])
 def user_profile(request):
