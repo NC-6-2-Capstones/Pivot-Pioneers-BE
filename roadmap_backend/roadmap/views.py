@@ -3,7 +3,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate
 from .models import PersonalityProfile
 from .forms import PersonalityProfileForm
 from .serializers import PersonalityProfileSerializer
@@ -18,6 +18,9 @@ from .serializers import (
 from rest_framework import viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.authtoken.models import Token
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 
 # Create your views here.
 User = get_user_model()
@@ -126,3 +129,39 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_token(request):
+    username = request.data.get('username')
+    password = request.data.get('password')
+    
+    user = authenticate(username=username, password=password)
+    
+    if user:
+        token, created = Token.objects.get_or_create(user=user)
+        serializer = UserSerializer(user)
+        return Response({'token': token.key, 'user': serializer.data})
+    
+    return Response({'detail': 'Invalid credentials'}, status=400)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register_token(request):
+    serializer = UserSerializer(data=request.data)
+    
+    if serializer.is_valid():
+        user = get_user_model().objects.create_user(
+            username=request.data['username'],
+            email=request.data.get('email', ''),
+            password=request.data['password']
+        )
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({'token': token.key, 'user': UserSerializer(user).data})
+    
+    return Response(serializer.errors, status=400)
+
+@api_view(['GET'])
+def user_profile(request):
+    serializer = UserSerializer(request.user)
+    return Response(serializer.data)
