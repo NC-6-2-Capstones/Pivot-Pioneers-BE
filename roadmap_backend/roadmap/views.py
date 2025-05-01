@@ -15,7 +15,7 @@ from .serializers import (
     ResourceSerializer, AssessmentQuestionSerializer, UserSerializer
 )
 
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 
@@ -71,14 +71,29 @@ def view_or_edit_profile(request):
 
 
 class GoalViewSet(viewsets.ModelViewSet):
+    queryset = Goal.objects.all()
     serializer_class = GoalSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return Goal.objects.filter(user=self.request.user)
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['get'], url_path='roadmap')
+    def roadmap(self, request, pk=None):
+        try:
+            goal = self.get_queryset().get(pk=pk)
+        except Goal.DoesNotExist:
+            return Response({'detail': 'Goal not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        steps = goal.steps.all().order_by('order')
+        serializer = RoadmapStepSerializer(steps, many=True)
+        return Response(serializer.data)
 
 
 class PersonalityProfileViewSet(viewsets.ModelViewSet):
@@ -113,8 +128,14 @@ class ResourceViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Resource.objects.filter(goal__user=self.request.user)
+        queryset = Resource.objects.all()
+        queryset = queryset.filter(goal__user=self.request.user)
 
+        goal_id = self.request.query_params.get('goal_id')
+        if goal_id is not None:
+            queryset = queryset.filter(goal_id=goal_id)
+
+        return queryset
 
 class AssessmentQuestionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AssessmentQuestion.objects.all()
