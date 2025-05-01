@@ -7,6 +7,13 @@ from django.contrib.auth import get_user_model
 from .models import PersonalityProfile
 from .forms import PersonalityProfileForm
 from .serializers import PersonalityProfileSerializer
+from .models import (
+    Goal, PersonalityProfile, RoadmapStep, Resource, AssessmentQuestion
+)
+from .serializers import (
+    GoalSerializer, PersonalityProfileSerializer, RoadmapStepSerializer,
+    ResourceSerializer, AssessmentQuestionSerializer, UserSerializer
+)
 
 from rest_framework import viewsets, permissions
 from rest_framework.response import Response
@@ -63,6 +70,17 @@ def view_or_edit_profile(request):
     return render(request, 'profile/edit_profile.html', {'form': form, 'profile': profile})
 
 
+class GoalViewSet(viewsets.ModelViewSet):
+    serializer_class = GoalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Goal.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
 class PersonalityProfileViewSet(viewsets.ModelViewSet):
     serializer_class = PersonalityProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -80,3 +98,31 @@ class PersonalityProfileViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'No profile found.'}, status=404)
         serializer = self.get_serializer(profile)
         return Response(serializer.data)
+    
+
+class RoadmapStepViewSet(viewsets.ModelViewSet):
+    serializer_class = RoadmapStepSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return RoadmapStep.objects.filter(goal__user=self.request.user)
+
+
+class ResourceViewSet(viewsets.ModelViewSet):
+    serializer_class = ResourceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Resource.objects.filter(goal__user=self.request.user)
+
+
+class AssessmentQuestionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = AssessmentQuestion.objects.all()
+    serializer_class = AssessmentQuestionSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAdminUser]
