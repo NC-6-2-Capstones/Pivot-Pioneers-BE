@@ -41,12 +41,14 @@ INSTALLED_APPS = [
     'roadmap',
     'rest_framework',
     'corsheaders',
+    'django_session_timeout',
 ]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django_session_timeout.middleware.SessionTimeoutMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -125,6 +127,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Session timeout
+SESSION_ENGINE = 'django.contrib.sessions.backends.db' 
+SESSION_COOKIE_AGE = 1800  
+SESSION_SAVE_EVERY_REQUEST = True 
+
+SESSION_EXPIRE_SECONDS = 300 
+SESSION_EXPIRE_AFTER_LAST_ACTIVITY = True  
+SESSION_TIMEOUT_REDIRECT = '/login/'  
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
