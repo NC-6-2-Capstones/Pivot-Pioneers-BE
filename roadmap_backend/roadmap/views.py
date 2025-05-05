@@ -4,6 +4,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth import get_user_model, authenticate
+from django.contrib import messages
+from django.utils.timezone import now, timedelta
 from .models import PersonalityProfile
 from .forms import PersonalityProfileForm
 from .serializers import PersonalityProfileSerializer
@@ -25,21 +27,27 @@ from rest_framework.permissions import AllowAny
 # Create your views here.
 User = get_user_model()
 
+def home_view(request):
+    return render(request, 'home.html')
+
+
 def login_view(request):
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
             login(request, user)
-            return redirect('post_list')
+            return redirect('view_or_edit_profile')
     else:
         form = AuthenticationForm()
     return render(request, 'registration/login.html', {'form': form})
+
 
 @login_required
 def logout_view(request):
     logout(request)
     return redirect('login')
+
 
 def register_view(request):
     if request.method == 'POST':
@@ -47,7 +55,7 @@ def register_view(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
-            return redirect('post_list')
+            return redirect('view_or_edit_profile')
     else:
         form = UserCreationForm()
     return render(request, 'registration/register.html', {'form': form})
@@ -60,17 +68,38 @@ def view_or_edit_profile(request):
     except PersonalityProfile.DoesNotExist:
         profile = None
 
+    retry_key = 'profile_retry_count'
+    last_attempt_key = 'profile_last_attempt'
+    retry_count = request.session.get(retry_key, 0)
+    last_attempt_time = request.session.get(last_attempt_key)
+
+    if last_attempt_time:
+        elapsed = now() - now().fromisoformat(last_attempt_time)
+        if elapsed > timedelta(minutes=10):
+            retry_count = 0
+            request.session[retry_key] = 0
+
     if request.method == 'POST':
-        form = PersonalityProfileForm(request.POST, instance=profile)
-        if form.is_valid():
-            profile = form.save(commit=False)
-            profile.user = request.user
-            profile.save()
-            return redirect('view_or_edit_profile')  
+        if retry_count >= 5:
+            messages.error(request, '⚠️ Max retry limit reached. Please try again later.')
+        else:
+            form = PersonalityProfileForm(request.POST, instance=profile)
+            if form.is_valid():
+                profile = form.save(commit=False)
+                profile.user = request.user
+                profile.save()
+                messages.success(request, '✅ Profile updated successfully.')
+                request.session[retry_key] = 0  
+                request.session[last_attempt_key] = now().isoformat()
+            else:
+                retry_count += 1
+                request.session[retry_key] = retry_count
+                request.session[last_attempt_key] = now().isoformat()
+                messages.error(request, f'❌ Failed to update profile. Attempt {retry_count} of 5.')
     else:
         form = PersonalityProfileForm(instance=profile)
 
-    return render(request, 'profile/edit_profile.html', {'form': form, 'profile': profile})
+    return render(request, 'profile/view_or_edit_profile.html', {'form': form, 'profile': profile})
 
 
 class GoalViewSet(viewsets.ModelViewSet):
@@ -140,6 +169,7 @@ class ResourceViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+
 class AssessmentQuestionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AssessmentQuestion.objects.all()
     serializer_class = AssessmentQuestionSerializer
@@ -150,6 +180,7 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -166,6 +197,7 @@ def login_token(request):
     
     return Response({'detail': 'Invalid credentials'}, status=400)
 
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_token(request):
@@ -181,6 +213,7 @@ def register_token(request):
         return Response({'token': token.key, 'user': UserSerializer(user).data})
     
     return Response(serializer.errors, status=400)
+
 
 @api_view(['GET'])
 def user_profile(request):
