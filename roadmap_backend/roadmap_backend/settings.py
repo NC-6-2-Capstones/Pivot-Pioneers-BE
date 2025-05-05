@@ -41,11 +41,8 @@ INSTALLED_APPS = [
     'roadmap',
     'rest_framework',
     'corsheaders',
-<<<<<<< Updated upstream
     'django_session_timeout',
-=======
     'rest_framework.authtoken',
->>>>>>> Stashed changes
 ]
 
 MIDDLEWARE = [
