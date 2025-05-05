@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'django_session_timeout',
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
