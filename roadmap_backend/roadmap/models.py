@@ -74,3 +74,16 @@ class AssessmentQuestion(models.Model):
     
     def __str__(self):
         return f"Question {self.question_id}: {self.dimension}"
+
+
+class AssessmentAnswer(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assessment_answers')
+    question = models.ForeignKey(AssessmentQuestion, on_delete=models.CASCADE)
+    answer = models.CharField(max_length=1)  # a, b, c, or d
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('user', 'question')
+    
+    def __str__(self):
+        return f"{self.user.username}'s answer to question {self.question.question_id}"

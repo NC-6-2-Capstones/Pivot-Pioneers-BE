@@ -10,7 +10,7 @@ from .models import PersonalityProfile
 from .forms import PersonalityProfileForm
 from .serializers import PersonalityProfileSerializer
 from .models import (
-    Goal, PersonalityProfile, RoadmapStep, Resource, AssessmentQuestion
+    Goal, PersonalityProfile, RoadmapStep, Resource, AssessmentQuestion, AssessmentAnswer
 )
 from .serializers import (
     GoalSerializer, PersonalityProfileSerializer, RoadmapStepSerializer,
@@ -22,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 
 # Create your views here.
 User = get_user_model()
@@ -219,3 +219,117 @@ def register_token(request):
 def user_profile(request):
     serializer = UserSerializer(request.user)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_assessment_questions(request):
+    """Get all assessment questions"""
+    questions = AssessmentQuestion.objects.all().order_by('question_id')
+    serializer = AssessmentQuestionSerializer(questions, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def submit_assessment(request):
+    """Submit assessment answers and create/update personality profile"""
+    answers_data = request.data.get('answers', [])
+    
+    if not answers_data:
+        return Response({'detail': 'No answers provided'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Map to store dimension values
+    dimension_values = {
+        'problem_solving': '',
+        'goal_energy': '',
+        'strengths': '',
+        'change_response': '',
+        'goal_motivation': '',
+        'daily_motivation': '',
+        'core_belief': '',
+        'time_structure': '',
+        'environment_preference': '',
+        'progress_block': '',
+        'obstacle_type': '',
+        'future_focus': '',
+        'success_definition': '',
+        'project_style': '',
+        'support_type': ''
+    }
+    
+    # Delete previous answers for this user
+    AssessmentAnswer.objects.filter(user=request.user).delete()
+    
+    # Process each answer
+    for answer_data in answers_data:
+        question_id = answer_data.get('question_id')
+        answer = answer_data.get('answer')
+        
+        try:
+            question = AssessmentQuestion.objects.get(question_id=question_id)
+            
+            # Save the answer
+            AssessmentAnswer.objects.create(
+                user=request.user,
+                question=question,
+                answer=answer
+            )
+            
+            # Map the answer to its value based on the dimension
+            if answer == 'a':
+                dimension_value = question.value_a
+            elif answer == 'b':
+                dimension_value = question.value_b
+            elif answer == 'c':
+                dimension_value = question.value_c
+            elif answer == 'd':
+                dimension_value = question.value_d
+            else:
+                dimension_value = ''
+            
+            # Only update if the dimension exists in our mapping
+            if question.dimension in dimension_values:
+                dimension_values[question.dimension] = dimension_value
+            
+        except AssessmentQuestion.DoesNotExist:
+            return Response(
+                {'detail': f'Question with ID {question_id} does not exist'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    # Create or update the personality profile
+    try:
+        profile = PersonalityProfile.objects.get(user=request.user)
+        # Update existing profile
+        for key, value in dimension_values.items():
+            if value:  # Only update if we have a value
+                setattr(profile, key, value)
+        profile.save()
+    except PersonalityProfile.DoesNotExist:
+        # Create new profile
+        profile = PersonalityProfile.objects.create(
+            user=request.user,
+            **{k: v for k, v in dimension_values.items() if v}  # Only include non-empty values
+        )
+    
+    serializer = PersonalityProfileSerializer(profile)
+    return Response({
+        'detail': 'Assessment completed successfully',
+        'profile': serializer.data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_personality_profile(request):
+    """Get personality profile for the current user"""
+    try:
+        profile = PersonalityProfile.objects.get(user=request.user)
+        serializer = PersonalityProfileSerializer(profile)
+        return Response(serializer.data)
+    except PersonalityProfile.DoesNotExist:
+        return Response(
+            {'detail': 'No personality profile found. Please complete the assessment.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
