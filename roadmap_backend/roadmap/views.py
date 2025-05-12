@@ -102,30 +102,30 @@ def view_or_edit_profile(request):
     return render(request, 'profile/view_or_edit_profile.html', {'form': form, 'profile': profile})
 
 
-class GoalViewSet(viewsets.ModelViewSet):
-    queryset = Goal.objects.all()
-    serializer_class = GoalSerializer
-    permission_classes = [permissions.IsAuthenticated]
+# class GoalViewSet(viewsets.ModelViewSet):
+#     queryset = Goal.objects.all()
+#     serializer_class = GoalSerializer
+#     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        return Goal.objects.filter(user=self.request.user)
+#     def get_queryset(self):
+#         return Goal.objects.filter(user=self.request.user)
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         serializer.save(user=request.user)
+#         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
-    @action(detail=True, methods=['get'], url_path='roadmap')
-    def roadmap(self, request, pk=None):
-        try:
-            goal = self.get_queryset().get(pk=pk)
-        except Goal.DoesNotExist:
-            return Response({'detail': 'Goal not found.'}, status=status.HTTP_404_NOT_FOUND)
+#     @action(detail=True, methods=['get'], url_path='roadmap')
+#     def roadmap(self, request, pk=None):
+#         try:
+#             goal = self.get_queryset().get(pk=pk)
+#         except Goal.DoesNotExist:
+#             return Response({'detail': 'Goal not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        steps = goal.steps.all().order_by('order')
-        serializer = RoadmapStepSerializer(steps, many=True)
-        return Response(serializer.data)
+#         steps = goal.steps.all().order_by('order')
+#         serializer = RoadmapStepSerializer(steps, many=True)
+#         return Response(serializer.data)
 
 
 class PersonalityProfileViewSet(viewsets.ModelViewSet):
@@ -333,3 +333,59 @@ def get_personality_profile(request):
             {'detail': 'No personality profile found. Please complete the assessment.'},
             status=status.HTTP_404_NOT_FOUND
         )
+    
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def goal_list_create(request):
+    """List all goals or create a new goal"""
+    if request.method == 'GET':
+        goals = Goal.objects.filter(user=request.user)
+        serializer = GoalSerializer(goals, many=True)
+        return Response(serializer.data)
+    
+    elif request.method == 'POST':
+        serializer = GoalSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def goal_detail(request, pk):
+    """Retrieve, update or delete a goal"""
+    try:
+        goal = Goal.objects.get(pk=pk, user=request.user)
+    except Goal.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        serializer = GoalSerializer(goal)
+        return Response(serializer.data)
+    
+    elif request.method == 'PUT':
+        serializer = GoalSerializer(goal, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        goal.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def goal_roadmap(request, pk):
+    """Get roadmap steps for a specific goal"""
+    try:
+        goal = Goal.objects.get(pk=pk, user=request.user)
+    except Goal.DoesNotExist:
+        return Response({'detail': 'Goal not found.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    steps = goal.steps.all().order_by('order')
+    serializer = RoadmapStepSerializer(steps, many=True)
+    return Response(serializer.data)
