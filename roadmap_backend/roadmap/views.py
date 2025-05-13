@@ -1,4 +1,6 @@
 import requests
+from django.http import JsonResponse
+from django.conf import settings
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout
@@ -30,6 +32,15 @@ User = get_user_model()
 def home_view(request):
     return render(request, 'home.html')
 
+def ask_gemini(request):
+    prompt = request.GET.get("prompt", "")
+
+    headers = {
+        "Authorization": f"Bearer {settings.GEMINI_API_KEY}",
+    }
+
+    response = requests.post("https://api.gemini.com/...", headers=headers, json={"prompt": prompt})
+    return JsonResponse(response.json())
 
 def login_view(request):
     if request.method == 'POST':
