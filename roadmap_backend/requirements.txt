@@ -4,6 +4,7 @@ charset-normalizer==3.4.1
 Django==5.2
 django-cors-headers==4.7.0
 django-rest-framework==0.1.0
+django-session-timeout==0.1.0
 djangorestframework==3.16.0
 idna==3.10
 psycopg2-binary==2.9.10
