@@ -11,6 +11,12 @@ class Goal(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_completed = models.BooleanField(default=False)
+    milestone_start = models.TextField(blank=True, null=True)
+    milestone_3_months = models.TextField(blank=True, null=True)
+    milestone_6_months = models.TextField(blank=True, null=True)
+    milestone_9_months = models.TextField(blank=True, null=True)
+    milestone_12_months = models.TextField(blank=True, null=True)
+    full_plan = models.TextField(blank=True, null=True)
     
     def __str__(self):
         return f'{self.title} - {self.user.username}'
