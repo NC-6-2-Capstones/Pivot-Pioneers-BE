@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import home_view, login_view, register_view, logout_view, login_token, register_token, user_profile, view_or_edit_profile, submit_assessment, get_personality_profile, get_assessment_questions, goal_list_create, goal_detail, goal_roadmap
+from .views import home_view, login_view, register_view, logout_view, login_token, register_token, user_profile, view_or_edit_profile, submit_assessment, get_personality_profile, get_assessment_questions, goal_list_create, goal_detail, goal_roadmap, generate_roadmap
 
 
 
@@ -19,5 +19,5 @@ urlpatterns = [
     path('api/goals/', goal_list_create, name='goal-list-create'),
     path('api/goals/<int:pk>/', goal_detail, name='goal-detail'),
     path('api/goals/<int:pk>/roadmap/', goal_roadmap, name='goal-roadmap'),
-
+    path('api/goals/generate-roadmap/', generate_roadmap, name='generate-roadmap'),
 ]
