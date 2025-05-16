@@ -12,11 +12,11 @@ from .models import PersonalityProfile
 from .forms import PersonalityProfileForm
 from .serializers import PersonalityProfileSerializer
 from .models import (
-    Goal, PersonalityProfile, RoadmapStep, Resource, AssessmentQuestion, AssessmentAnswer
+    Goal, PersonalityProfile, RoadmapStep, Resource, AssessmentQuestion, AssessmentAnswer,UserPoints, Achievement, UserAchievement
 )
 from .serializers import (
     GoalSerializer, PersonalityProfileSerializer, RoadmapStepSerializer,
-    ResourceSerializer, AssessmentQuestionSerializer, UserSerializer
+    ResourceSerializer, AssessmentQuestionSerializer, UserSerializer, AchievementSerializer, UserAchievementSerializer, UserPointsSerializer
 )
 
 from rest_framework import viewsets, permissions, status
@@ -25,6 +25,7 @@ from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.views import APIView
 
 # Create your views here.
 User = get_user_model()
@@ -400,3 +401,143 @@ def goal_roadmap(request, pk):
     steps = goal.steps.all().order_by('order')
     serializer = RoadmapStepSerializer(steps, many=True)
     return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_points(request):
+    """Get the current user's points and level"""
+    try:
+        points = UserPoints.objects.get(user=request.user)
+        serializer = UserPointsSerializer(points)
+        return Response(serializer.data)
+    except UserPoints.DoesNotExist:
+        # Create new points object if it doesn't exist
+        points = UserPoints.objects.create(user=request.user)
+        serializer = UserPointsSerializer(points)
+        return Response(serializer.data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_points_for_goal(request):
+    """Add points for completing a goal"""
+    goal_id = request.data.get('goal_id')
+    category = request.data.get('category', 'other')
+    
+    # Define points by category
+    category_points = {
+        'career': 100,
+        'education': 100,
+        'personal': 75,
+        'financial': 125,
+        'health': 100,
+        'other': 50
+    }
+    
+    points_to_add = category_points.get(category.lower(), 50)
+    
+    try:
+        # Get or create user points
+        user_points, created = UserPoints.objects.get_or_create(user=request.user)
+        
+        # Add points
+        level_up = user_points.add_points(points_to_add)
+        
+        # Check for achievements
+        check_achievements(request.user, user_points)
+        
+        return Response({
+            'total_points': user_points.total_points,
+            'level': user_points.level,
+            'points_earned': points_to_add,
+            'level_up': level_up,
+            'goals_completed': user_points.goals_completed
+        })
+    except Exception as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_achievements(request):
+    """Get all achievements for the current user"""
+    user_achievements = UserAchievement.objects.filter(user=request.user)
+    serializer = UserAchievementSerializer(user_achievements, many=True)
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_new_achievements(request):
+    """Check for new achievements and return them"""
+    user_points = UserPoints.objects.get_or_create(user=request.user)[0]
+    new_achievements = check_achievements(request.user, user_points)
+    
+    serializer = AchievementSerializer(new_achievements, many=True)
+    return Response({
+        'new_achievements': serializer.data
+    })
+
+# Helper function to check and award achievements
+def check_achievements(user, user_points):
+    """Check if user qualifies for any new achievements and award them"""
+    new_achievements = []
+    
+    # Get all existing achievements for this user
+    existing_achievements = UserAchievement.objects.filter(user=user).values_list('achievement_id', flat=True)
+    
+    # Check for goal completion achievements
+    if user_points.goals_completed >= 1:
+        achievement, created = Achievement.objects.get_or_create(
+            name="First Goal Completed",
+            defaults={
+                'description': "You've completed your first goal!",
+                'points': 50,
+                'achievement_type': 'completion',
+                'icon': 'stars'
+            }
+        )
+        
+        if achievement.id not in existing_achievements:
+            UserAchievement.objects.create(user=user, achievement=achievement)
+            new_achievements.append(achievement)
+            # Add achievement bonus points
+            user_points.total_points += achievement.points
+            user_points.save()
+    
+    if user_points.goals_completed >= 5:
+        achievement, created = Achievement.objects.get_or_create(
+            name="Goal Master",
+            defaults={
+                'description': "You've completed 5 goals!",
+                'points': 100,
+                'achievement_type': 'completion',
+                'icon': 'emoji_events'
+            }
+        )
+        
+        if achievement.id not in existing_achievements:
+            UserAchievement.objects.create(user=user, achievement=achievement)
+            new_achievements.append(achievement)
+            # Add achievement bonus points
+            user_points.total_points += achievement.points
+            user_points.save()
+    
+    # Check for level achievements
+    if user_points.level >= 3:
+        achievement, created = Achievement.objects.get_or_create(
+            name="Level 3 Achiever",
+            defaults={
+                'description': "You've reached level 3!",
+                'points': 75,
+                'achievement_type': 'special',
+                'icon': 'military_tech'
+            }
+        )
+        
+        if achievement.id not in existing_achievements:
+            UserAchievement.objects.create(user=user, achievement=achievement)
+            new_achievements.append(achievement)
+            # Add achievement bonus points
+            user_points.total_points += achievement.points
+            user_points.save()
+    
+    # Return any new achievements
+    return new_achievements
