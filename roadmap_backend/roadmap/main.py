@@ -7,15 +7,8 @@ from gemini_ai import analyze_goal_with_gemini
 app = FastAPI()
 
 
-class Assessment(BaseModel):
-    q1: str
-    q2: str
-    q3: str
-
-
 class AnalyzeRequest(BaseModel):
-    goal: str
-    assessment: Assessment
+    prompt: str
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,5 +20,5 @@ app.add_middleware(
 
 @app.post("/analyze")
 def analyze(request: AnalyzeRequest):
-    result = analyze_goal_with_gemini(request.goal, request.assessment)
+    result = analyze_goal_with_gemini(request.prompt)
     return {"ai_response": result}

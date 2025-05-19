@@ -25,7 +25,10 @@ from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from .gemini_ai import analyze_goal_with_gemini
 from rest_framework.views import APIView
+import re # Import re for parsing
+
 
 # Create your views here.
 User = get_user_model()
@@ -40,7 +43,11 @@ def ask_gemini(request):
         "Authorization": f"Bearer {settings.GEMINI_API_KEY}",
     }
 
-    response = requests.post("https://api.gemini.com/...", headers=headers, json={"prompt": prompt})
+    response = requests.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+        headers=headers,
+        json={"contents": [{"parts": [{"text": prompt}]}]}
+    )
     return JsonResponse(response.json())
 
 def login_view(request):
@@ -541,3 +548,166 @@ def check_achievements(user, user_points):
     
     # Return any new achievements
     return new_achievements
+
+def parse_gemini_roadmap_response(text_response):
+    """
+    Parses the plain text response from Gemini to extract roadmap milestones and full plan.
+    Assumes the response format requested in the prompt:
+    Milestones:
+    - Start: ...
+    - 3 months: ...
+    - 6 months: ...
+    - 9 months: ...
+    - 12 months: ...
+
+    Full Plan:
+    ...
+    """
+    roadmap_data = {
+        "milestone_start": "",
+        "milestone_3_months": "",
+        "milestone_6_months": "",
+        "milestone_9_months": "",
+        "milestone_12_months": "",
+        "full_plan": ""
+    }
+
+    try:
+        # Extract Milestones block
+        milestones_match = re.search(r"Milestones:(.*?)Full Plan:", text_response, re.DOTALL | re.IGNORECASE)
+        milestones_text = ""
+        if milestones_match:
+            milestones_text = milestones_match.group(1).strip()
+
+        # Extract Full Plan block
+        full_plan_match = re.search(r"Full Plan:(.*)", text_response, re.DOTALL | re.IGNORECASE)
+        if full_plan_match:
+            roadmap_data["full_plan"] = full_plan_match.group(1).strip()
+
+        # Extract individual milestones
+        if milestones_text:
+            start_match = re.search(r"- Start:(.*?)(?=(- 3 months:|- 6 months:|- 9 months:|- 12 months:|$))", milestones_text, re.DOTALL | re.IGNORECASE)
+            if start_match: roadmap_data["milestone_start"] = start_match.group(1).strip()
+
+            three_months_match = re.search(r"- 3 months:(.*?)(?=(- 6 months:|- 9 months:|- 12 months:|$))", milestones_text, re.DOTALL | re.IGNORECASE)
+            if three_months_match: roadmap_data["milestone_3_months"] = three_months_match.group(1).strip()
+
+            six_months_match = re.search(r"- 6 months:(.*?)(?=(- 9 months:|- 12 months:|$))", milestones_text, re.DOTALL | re.IGNORECASE)
+            if six_months_match: roadmap_data["milestone_6_months"] = six_months_match.group(1).strip()
+
+            nine_months_match = re.search(r"- 9 months:(.*?)(?=(- 12 months:|$))", milestones_text, re.DOTALL | re.IGNORECASE)
+            if nine_months_match: roadmap_data["milestone_9_months"] = nine_months_match.group(1).strip()
+
+            twelve_months_match = re.search(r"- 12 months:(.*)", milestones_text, re.DOTALL | re.IGNORECASE)
+            if twelve_months_match: roadmap_data["milestone_12_months"] = twelve_months_match.group(1).strip()
+            
+    except Exception as e:
+        # Log parsing error, or handle as needed
+        print(f"Error parsing roadmap response: {e}")
+        # Optionally, put the whole raw response into full_plan if parsing fails
+        # roadmap_data["full_plan"] = "Could not parse roadmap details. Raw response:\\n" + text_response
+
+
+    return roadmap_data
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_roadmap(request):
+    """
+    Generate a roadmap using Gemini AI, parse it, and save it to the Goal.
+    Expects 'goal_id' in request.data to identify the target goal.
+    Also uses 'goal' title, 'category', 'description' from request.data for the prompt.
+    """
+    user = request.user
+    goal_id = request.data.get('goal_id')
+    goal_title = request.data.get('goal') # Assuming 'goal' is the title for the prompt
+    category = request.data.get('category')
+    description = request.data.get('description')
+
+    if not goal_id:
+        return Response({'detail': 'goal_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        target_goal = Goal.objects.get(id=goal_id, user=user)
+    except Goal.DoesNotExist:
+        return Response({'detail': 'Goal not found or you do not have permission.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check for personality profile
+    try:
+        profile = PersonalityProfile.objects.get(user=user)
+    except PersonalityProfile.DoesNotExist:
+        return Response({'detail': 'You must complete your assessment and personality profile before generating a roadmap.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Get assessment answers (latest for user)
+    assessment_answers = AssessmentAnswer.objects.filter(user=user)
+    if not assessment_answers.exists():
+        return Response({'detail': 'You must complete your assessment before generating a roadmap.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    assessment_summary = {}
+    for answer in assessment_answers:
+        # We need the actual text value of the answer, not just 'a', 'b', 'c', 'd'
+        # This requires mapping answer.answer to question.value_a, value_b etc.
+        # For simplicity in this step, I'm still using answer.answer, but this should be improved
+        # to get the richer text value that the profile uses.
+        # Example: if answer.answer is 'a', use answer.question.value_a
+        answer_choice = answer.answer 
+        value = answer_choice # Placeholder - ideally map to actual value
+        if hasattr(answer.question, f'value_{answer_choice.lower()}'):
+             value = getattr(answer.question, f'value_{answer_choice.lower()}')
+        assessment_summary[answer.question.dimension] = value
+
+
+    personality_summary = {field.name: getattr(profile, field.name) for field in PersonalityProfile._meta.fields if field.name not in ['id', 'user', 'created_at', 'updated_at']}
+
+    # Compose prompt for Gemini
+    # Using goal_title, category, description from request for the prompt
+    prompt = f"""
+    The user has the following goal:
+    Title: {goal_title} 
+    Category: {category}
+    Description: {description}
+
+    Their assessment answers by dimension are:
+    {assessment_summary}
+
+    Their personality profile is:
+    {personality_summary}
+
+    Please generate a 1-year roadmap for this user, broken into 5 milestones (Start, 3 months, 6 months, 9 months, 12 months) and a detailed full plan. Format as:
+    Milestones:
+    - Start: ...
+    - 3 months: ...
+    - 6 months: ...
+    - 9 months: ...
+    - 12 months: ...
+
+    Full Plan:
+    ...
+    """
+    try:
+        ai_response_text = analyze_goal_with_gemini(prompt)
+    except Exception as e:
+        return Response({'detail': f'Error calling Gemini: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Parse the AI response
+    parsed_roadmap = parse_gemini_roadmap_response(ai_response_text)
+
+    # Update the target Goal object
+    target_goal.milestone_start = parsed_roadmap.get("milestone_start", "")
+    target_goal.milestone_3_months = parsed_roadmap.get("milestone_3_months", "")
+    target_goal.milestone_6_months = parsed_roadmap.get("milestone_6_months", "")
+    target_goal.milestone_9_months = parsed_roadmap.get("milestone_9_months", "")
+    target_goal.milestone_12_months = parsed_roadmap.get("milestone_12_months", "")
+    target_goal.full_plan = parsed_roadmap.get("full_plan", "")
+    
+    try:
+        target_goal.save()
+    except Exception as e:
+        # Log saving error
+        print(f"Error saving roadmap to goal {target_goal.id}: {e}")
+        return Response({'detail': f'Could not save roadmap to goal: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    serializer = GoalSerializer(target_goal)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
