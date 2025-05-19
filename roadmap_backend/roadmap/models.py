@@ -93,3 +93,70 @@ class AssessmentAnswer(models.Model):
     
     def __str__(self):
         return f"{self.user.username}'s answer to question {self.question.question_id}"
+    
+
+
+class UserPoints(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='points')
+    total_points = models.IntegerField(default=0)
+    level = models.IntegerField(default=1)
+    goals_completed = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username}'s Points - Level {self.level}"
+    
+    def calculate_level(self):
+        """Calculate user level based on points"""
+        if self.total_points < 500:
+            return 1
+        elif self.total_points < 1500:
+            return 2
+        elif self.total_points < 3000:
+            return 3
+        elif self.total_points < 5000:
+            return 4
+        else:
+            return 5
+    
+    def add_points(self, points):
+        """Add points and update level if needed"""
+        self.total_points += points
+        self.goals_completed += 1
+        new_level = self.calculate_level()
+        level_up = new_level > self.level
+        self.level = new_level
+        self.save()
+        return level_up
+
+
+class Achievement(models.Model):
+    ACHIEVEMENT_TYPES = [
+        ('completion', 'Goal Completion'),
+        ('streak', 'Completion Streak'),
+        ('category', 'Category Mastery'),
+        ('special', 'Special Achievement')
+    ]
+    
+    name = models.CharField(max_length=100)
+    description = models.TextField()
+    points = models.IntegerField(default=50)
+    achievement_type = models.CharField(max_length=20, choices=ACHIEVEMENT_TYPES)
+    icon = models.CharField(max_length=100, default='trophy')  # FontAwesome or Material icon name
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.name
+
+
+class UserAchievement(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='achievements')
+    achievement = models.ForeignKey(Achievement, on_delete=models.CASCADE)
+    achieved_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('user', 'achievement')
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.achievement.name}"

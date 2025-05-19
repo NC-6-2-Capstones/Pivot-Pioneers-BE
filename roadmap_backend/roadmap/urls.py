@@ -1,5 +1,7 @@
 from django.urls import path
-from .views import home_view, login_view, register_view, logout_view, login_token, register_token, user_profile, view_or_edit_profile, submit_assessment, get_personality_profile, get_assessment_questions, goal_list_create, goal_detail, goal_roadmap, generate_roadmap
+
+from .views import home_view, login_view, register_view, logout_view, login_token, register_token, user_profile, view_or_edit_profile, submit_assessment, get_personality_profile, get_assessment_questions, goal_list_create, goal_detail, goal_roadmap, get_user_achievements, get_user_points, add_points_for_goal, check_new_achievements, generate_roadmap
+
 
 
 
@@ -19,5 +21,14 @@ urlpatterns = [
     path('api/goals/', goal_list_create, name='goal-list-create'),
     path('api/goals/<int:pk>/', goal_detail, name='goal-detail'),
     path('api/goals/<int:pk>/roadmap/', goal_roadmap, name='goal-roadmap'),
+
+    path('api/gamification/points/', get_user_points, name='user-points'),
+    path('api/gamification/add-points/', add_points_for_goal, name='add-points'),
+    path('api/gamification/achievements/', get_user_achievements, name='user-achievements'),
+    path('api/gamification/check-achievements/', check_new_achievements, name='check-achievements'),
+
+
+
     path('api/goals/generate-roadmap/', generate_roadmap, name='generate-roadmap'),
+
 ]
